@@ -4,10 +4,15 @@ import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Importance;
 import org.apache.kafka.common.config.ConfigDef.Type;
+import org.apache.kafka.common.config.ConfigException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
 public class CustomSourceConnectorConfig extends AbstractConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(CustomSourceConnectorConfig.class);
 
     public static final String SOURCE_BOOTSTRAP_SERVERS_CONFIG = "source.bootstrap.servers";
     private static final String SOURCE_BOOTSTRAP_SERVERS_DOC = "Source Kafka cluster bootstrap servers";
@@ -50,6 +55,40 @@ public class CustomSourceConnectorConfig extends AbstractConfig {
 
     public CustomSourceConnectorConfig(Map<?, ?> originals) {
         super(config(), originals);
+        try {
+            validateConfiguration();
+            log.debug("Configuration validated successfully");
+        } catch (ConfigException e) {
+            log.error("Configuration validation failed: {}", e.getMessage());
+            throw e;
+        }
+    }
+    
+    private void validateConfiguration() {
+        String bootstrapServers = getSourceBootstrapServers();
+        if (bootstrapServers == null || bootstrapServers.trim().isEmpty()) {
+            throw new ConfigException(SOURCE_BOOTSTRAP_SERVERS_CONFIG, bootstrapServers, 
+                    "Bootstrap servers cannot be null or empty");
+        }
+        
+        String sourceTopic = getSourceTopic();
+        if (sourceTopic == null || sourceTopic.trim().isEmpty()) {
+            throw new ConfigException(SOURCE_TOPIC_CONFIG, sourceTopic, 
+                    "Source topic cannot be null or empty");
+        }
+        
+        if (getPollTimeoutMs() < 0) {
+            throw new ConfigException(POLL_TIMEOUT_MS_CONFIG, getPollTimeoutMs(), 
+                    "Poll timeout must be non-negative");
+        }
+        
+        if (getMaxPollRecords() <= 0) {
+            throw new ConfigException(MAX_POLL_RECORDS_CONFIG, getMaxPollRecords(), 
+                    "Max poll records must be positive");
+        }
+        
+        log.debug("Configuration validation: bootstrap.servers={}, source.topic={}, target.topic={}",
+                bootstrapServers, sourceTopic, getTargetTopic());
     }
 
     public static ConfigDef config() {
@@ -110,16 +149,33 @@ public class CustomSourceConnectorConfig extends AbstractConfig {
     }
 
     public String getSourceBootstrapServers() {
-        return getString(SOURCE_BOOTSTRAP_SERVERS_CONFIG);
+        try {
+            return getString(SOURCE_BOOTSTRAP_SERVERS_CONFIG);
+        } catch (Exception e) {
+            log.error("Error getting source bootstrap servers: {}", e.getMessage());
+            throw new ConfigException("Failed to retrieve source bootstrap servers", e);
+        }
     }
 
     public String getSourceTopic() {
-        return getString(SOURCE_TOPIC_CONFIG);
+        try {
+            return getString(SOURCE_TOPIC_CONFIG);
+        } catch (Exception e) {
+            log.error("Error getting source topic: {}", e.getMessage());
+            throw new ConfigException("Failed to retrieve source topic", e);
+        }
     }
 
     public String getTargetTopic() {
-        String target = getString(TARGET_TOPIC_CONFIG);
-        return target != null ? target : getSourceTopic();
+        try {
+            String target = getString(TARGET_TOPIC_CONFIG);
+            String result = target != null && !target.trim().isEmpty() ? target : getSourceTopic();
+            log.trace("Target topic resolved to: {}", result);
+            return result;
+        } catch (Exception e) {
+            log.error("Error getting target topic: {}", e.getMessage());
+            throw new ConfigException("Failed to retrieve target topic", e);
+        }
     }
 
     public String getSourceGroupId() {
