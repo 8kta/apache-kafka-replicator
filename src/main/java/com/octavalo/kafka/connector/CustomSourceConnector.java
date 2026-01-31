@@ -1,4 +1,4 @@
-package com.example.kafka.connector;
+package com.octavalo.kafka.connector;
 
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.Task;
@@ -24,10 +24,11 @@ public class CustomSourceConnector extends SourceConnector {
 
     @Override
     public void start(Map<String, String> props) {
-        log.info("Starting CustomSourceConnector");
+        log.info("Starting CustomSourceConnector for Kafka replication");
         configProps = props;
         config = new CustomSourceConnectorConfig(props);
-        log.info("CustomSourceConnector started with topic: {}", config.getTopic());
+        log.info("CustomSourceConnector started - replicating from source topic '{}' to target topic '{}'", 
+                config.getSourceTopic(), config.getTargetTopic());
     }
 
     @Override

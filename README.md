@@ -1,6 +1,6 @@
-# Apache Kafka Custom Source Connector
+# Apache Kafka Replicator Connector
 
-A custom Apache Kafka Connect source connector implementation. This project provides a template for building custom Kafka source connectors to integrate external data sources with Kafka.
+A Kafka Connect source connector for replicating data from one Kafka cluster to another. This connector consumes messages from a source Kafka topic and produces them to a target Kafka cluster, preserving message keys, values, headers, partitions, and timestamps.
 
 ## Project Structure
 
@@ -8,7 +8,7 @@ A custom Apache Kafka Connect source connector implementation. This project prov
 apache-kafka-replicator/
 ├── src/
 │   ├── main/
-│   │   ├── java/com/example/kafka/connector/
+│   │   ├── java/com/octavalo/kafka/connector/
 │   │   │   ├── CustomSourceConnector.java
 │   │   │   ├── CustomSourceTask.java
 │   │   │   └── CustomSourceConnectorConfig.java
@@ -20,10 +20,20 @@ apache-kafka-replicator/
 
 ## Components
 
-### Source Connector
-- **CustomSourceConnector**: Main connector class that manages source tasks
-- **CustomSourceTask**: Task that polls data from a source and produces to Kafka topics
-- **CustomSourceConnectorConfig**: Configuration management for source connector
+### Replication Connector
+- **CustomSourceConnector**: Main connector class that manages replication tasks
+- **CustomSourceTask**: Task that consumes from source Kafka cluster and produces to target cluster
+- **CustomSourceConnectorConfig**: Configuration management with source cluster connection settings
+
+## Features
+
+- **Cross-cluster replication**: Replicate data from one Kafka cluster to another
+- **Preserve message integrity**: Maintains original keys, values, and headers
+- **Partition preservation**: Option to maintain source partition assignment
+- **Timestamp preservation**: Option to keep original message timestamps
+- **Offset management**: Automatic offset tracking and resumption
+- **Security support**: SASL/SSL authentication for source cluster
+- **Configurable performance**: Tunable batch sizes and poll intervals
 
 ## Prerequisites
 
@@ -46,32 +56,54 @@ mvn clean package
 
 3. The compiled JAR will be available at:
 ```
-target/kafka-custom-connector-1.0.0-jar-with-dependencies.jar
+target/kafka-connector-1.0.0-jar-with-dependencies.jar
 ```
 
 ## Configuration
 
-### Source Connector Configuration
+### Connector Configuration
 
 Edit `src/main/resources/custom-source-connector.properties`:
 
 ```properties
-name=custom-source-connector
-connector.class=com.example.kafka.connector.CustomSourceConnector
+name=kafka-replicator-connector
+connector.class=com.octavalo.kafka.connector.CustomSourceConnector
 tasks.max=1
 
-# Custom configurations
-topic=custom-source-topic
-poll.interval.ms=1000
-data.source=example-data-source
-batch.size=100
+# Source Kafka cluster configuration
+source.bootstrap.servers=source-kafka-broker:9092
+source.topic=source-topic-name
+source.group.id=kafka-replicator-connector
+source.security.protocol=PLAINTEXT
+
+# Target topic configuration
+target.topic=target-topic-name
+
+# Performance tuning
+poll.timeout.ms=1000
+max.poll.records=500
+
+# Data preservation options
+preserve.partitions=true
+preserve.timestamps=true
 ```
 
 **Configuration Parameters:**
-- `topic`: Target Kafka topic to write data to
-- `poll.interval.ms`: Interval in milliseconds between polling for new data
-- `data.source`: Identifier or path to the data source
-- `batch.size`: Maximum number of records to return in a single poll
+
+**Required:**
+- `source.bootstrap.servers`: Bootstrap servers for the source Kafka cluster
+- `source.topic`: Source topic to replicate from
+
+**Optional:**
+- `target.topic`: Target topic name (defaults to source topic name if not specified)
+- `source.group.id`: Consumer group ID for source cluster (default: `kafka-replicator-connector`)
+- `source.security.protocol`: Security protocol - PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL (default: `PLAINTEXT`)
+- `source.sasl.mechanism`: SASL mechanism for authentication (e.g., PLAIN, SCRAM-SHA-256)
+- `source.sasl.jaas.config`: JAAS configuration for SASL authentication
+- `poll.timeout.ms`: Timeout for polling source cluster (default: `1000`)
+- `max.poll.records`: Maximum records per poll (default: `500`)
+- `preserve.partitions`: Preserve source partition assignment (default: `true`)
+- `preserve.timestamps`: Preserve original message timestamps (default: `true`)
 
 ## Deployment
 
@@ -79,8 +111,8 @@ batch.size=100
 
 1. Copy the JAR to Kafka Connect's plugin directory:
 ```bash
-mkdir -p /path/to/kafka/plugins/custom-connector
-cp target/kafka-custom-connector-1.0.0-jar-with-dependencies.jar /path/to/kafka/plugins/custom-connector/
+mkdir -p /path/to/kafka/plugins/kafka-connector
+cp target/kafka-connector-1.0.0-jar-with-dependencies.jar /path/to/kafka/plugins/kafka-connector/
 ```
 
 2. Update Kafka Connect worker configuration (`connect-standalone.properties`):
@@ -105,18 +137,42 @@ connect-distributed.sh config/connect-distributed.properties
 
 3. Deploy the connector via REST API:
 
+**Basic Configuration:**
 ```bash
 curl -X POST http://localhost:8083/connectors \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "custom-source-connector",
+    "name": "kafka-replicator-connector",
     "config": {
-      "connector.class": "com.example.kafka.connector.CustomSourceConnector",
+      "connector.class": "com._8kta.kafka.connector.CustomSourceConnector",
       "tasks.max": "1",
-      "topic": "custom-source-topic",
-      "poll.interval.ms": "1000",
-      "data.source": "example-data-source",
-      "batch.size": "100"
+      "source.bootstrap.servers": "source-kafka:9092",
+      "source.topic": "my-source-topic",
+      "target.topic": "my-target-topic",
+      "source.group.id": "kafka-replicator",
+      "poll.timeout.ms": "1000",
+      "max.poll.records": "500",
+      "preserve.partitions": "true",
+      "preserve.timestamps": "true"
+    }
+  }'
+```
+
+**With SASL Authentication:**
+```bash
+curl -X POST http://localhost:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "kafka-replicator-connector",
+    "config": {
+      "connector.class": "com._8kta.kafka.connector.CustomSourceConnector",
+      "tasks.max": "1",
+      "source.bootstrap.servers": "source-kafka:9092",
+      "source.topic": "my-source-topic",
+      "target.topic": "my-target-topic",
+      "source.security.protocol": "SASL_SSL",
+      "source.sasl.mechanism": "PLAIN",
+      "source.sasl.jaas.config": "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"user\" password=\"password\";"
     }
   }'
 ```
@@ -125,7 +181,7 @@ curl -X POST http://localhost:8083/connectors \
 
 ### Check connector status:
 ```bash
-curl http://localhost:8083/connectors/custom-source-connector/status
+curl http://localhost:8083/connectors/kafka-replicator-connector/status
 ```
 
 ### List all connectors:
@@ -135,34 +191,53 @@ curl http://localhost:8083/connectors
 
 ### Delete a connector:
 ```bash
-curl -X DELETE http://localhost:8083/connectors/custom-source-connector
+curl -X DELETE http://localhost:8083/connectors/kafka-replicator-connector
 ```
 
 ### Pause a connector:
 ```bash
-curl -X PUT http://localhost:8083/connectors/custom-source-connector/pause
+curl -X PUT http://localhost:8083/connectors/kafka-replicator-connector/pause
 ```
 
 ### Resume a connector:
 ```bash
-curl -X PUT http://localhost:8083/connectors/custom-source-connector/resume
+curl -X PUT http://localhost:8083/connectors/kafka-replicator-connector/resume
 ```
+
+## How It Works
+
+1. **Consumer Setup**: The connector creates a Kafka consumer that connects to the source cluster
+2. **Offset Management**: Uses Kafka Connect's offset storage to track progress and enable resumption
+3. **Message Polling**: Continuously polls messages from the source topic
+4. **Data Preservation**: Maintains message keys, values, headers, partitions (optional), and timestamps (optional)
+5. **Production**: Produces messages to the target cluster via Kafka Connect framework
+
+## Use Cases
+
+- **Disaster Recovery**: Replicate critical topics to a backup cluster
+- **Data Migration**: Move data from one Kafka cluster to another
+- **Multi-Region Replication**: Sync data across geographically distributed clusters
+- **Development/Testing**: Copy production data to non-production environments
+- **Cloud Migration**: Migrate from on-premise to cloud Kafka clusters
 
 ## Customization
 
-To adapt this connector for your specific use case:
+To adapt this connector for specific requirements:
 
-1. **Modify the Source Task** (`CustomSourceTask.java`):
-   - Implement your data source polling logic in the `poll()` method
-   - Update offset management for your data source
-   - Customize record creation based on your data format
+1. **Add Message Filtering**:
+   - Modify `CustomSourceTask.poll()` to filter messages based on criteria
+   - Add configuration for filter rules
 
-2. **Update Configuration Class**:
-   - Add new configuration parameters in `CustomSourceConnectorConfig`
-   - Update validation logic as needed
+2. **Add Message Transformation**:
+   - Implement transformation logic in the task
+   - Consider using Kafka Connect SMTs (Single Message Transforms) instead
 
-3. **Add Dependencies**:
-   - Update `pom.xml` with any additional libraries needed for your integration
+3. **Multi-Topic Replication**:
+   - Extend configuration to support multiple source topics
+   - Update task to handle topic routing
+
+4. **Add Dependencies**:
+   - Update `pom.xml` with any additional libraries needed
 
 ## Testing
 
