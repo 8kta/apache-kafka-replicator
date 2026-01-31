@@ -45,6 +45,27 @@ public class CustomSourceConnectorConfig extends AbstractConfig {
     public static final String SOURCE_SASL_JAAS_CONFIG = "source.sasl.jaas.config";
     private static final String SOURCE_SASL_JAAS_CONFIG_DOC = "JAAS configuration for source cluster SASL authentication";
 
+    public static final String SOURCE_SASL_USERNAME_CONFIG = "source.sasl.username";
+    private static final String SOURCE_SASL_USERNAME_DOC = "Username for SASL authentication (used to build JAAS config if source.sasl.jaas.config is not provided)";
+
+    public static final String SOURCE_SASL_PASSWORD_CONFIG = "source.sasl.password";
+    private static final String SOURCE_SASL_PASSWORD_DOC = "Password for SASL authentication (used to build JAAS config if source.sasl.jaas.config is not provided)";
+
+    public static final String SOURCE_SSL_TRUSTSTORE_LOCATION_CONFIG = "source.ssl.truststore.location";
+    private static final String SOURCE_SSL_TRUSTSTORE_LOCATION_DOC = "Location of the truststore file for SSL";
+
+    public static final String SOURCE_SSL_TRUSTSTORE_PASSWORD_CONFIG = "source.ssl.truststore.password";
+    private static final String SOURCE_SSL_TRUSTSTORE_PASSWORD_DOC = "Password for the truststore";
+
+    public static final String SOURCE_SSL_KEYSTORE_LOCATION_CONFIG = "source.ssl.keystore.location";
+    private static final String SOURCE_SSL_KEYSTORE_LOCATION_DOC = "Location of the keystore file for SSL";
+
+    public static final String SOURCE_SSL_KEYSTORE_PASSWORD_CONFIG = "source.ssl.keystore.password";
+    private static final String SOURCE_SSL_KEYSTORE_PASSWORD_DOC = "Password for the keystore";
+
+    public static final String SOURCE_SSL_KEY_PASSWORD_CONFIG = "source.ssl.key.password";
+    private static final String SOURCE_SSL_KEY_PASSWORD_DOC = "Password for the key in the keystore";
+
     public static final String PRESERVE_PARTITIONS_CONFIG = "preserve.partitions";
     private static final String PRESERVE_PARTITIONS_DOC = "Preserve source partition assignment in target topic";
     private static final boolean PRESERVE_PARTITIONS_DEFAULT = true;
@@ -136,6 +157,41 @@ public class CustomSourceConnectorConfig extends AbstractConfig {
                         null,
                         Importance.LOW,
                         SOURCE_SASL_JAAS_CONFIG_DOC)
+                .define(SOURCE_SASL_USERNAME_CONFIG,
+                        Type.STRING,
+                        null,
+                        Importance.LOW,
+                        SOURCE_SASL_USERNAME_DOC)
+                .define(SOURCE_SASL_PASSWORD_CONFIG,
+                        Type.PASSWORD,
+                        null,
+                        Importance.LOW,
+                        SOURCE_SASL_PASSWORD_DOC)
+                .define(SOURCE_SSL_TRUSTSTORE_LOCATION_CONFIG,
+                        Type.STRING,
+                        null,
+                        Importance.LOW,
+                        SOURCE_SSL_TRUSTSTORE_LOCATION_DOC)
+                .define(SOURCE_SSL_TRUSTSTORE_PASSWORD_CONFIG,
+                        Type.PASSWORD,
+                        null,
+                        Importance.LOW,
+                        SOURCE_SSL_TRUSTSTORE_PASSWORD_DOC)
+                .define(SOURCE_SSL_KEYSTORE_LOCATION_CONFIG,
+                        Type.STRING,
+                        null,
+                        Importance.LOW,
+                        SOURCE_SSL_KEYSTORE_LOCATION_DOC)
+                .define(SOURCE_SSL_KEYSTORE_PASSWORD_CONFIG,
+                        Type.PASSWORD,
+                        null,
+                        Importance.LOW,
+                        SOURCE_SSL_KEYSTORE_PASSWORD_DOC)
+                .define(SOURCE_SSL_KEY_PASSWORD_CONFIG,
+                        Type.PASSWORD,
+                        null,
+                        Importance.LOW,
+                        SOURCE_SSL_KEY_PASSWORD_DOC)
                 .define(PRESERVE_PARTITIONS_CONFIG,
                         Type.BOOLEAN,
                         PRESERVE_PARTITIONS_DEFAULT,
@@ -199,8 +255,54 @@ public class CustomSourceConnectorConfig extends AbstractConfig {
     }
 
     public String getSourceSaslJaasConfig() {
-        return getPassword(SOURCE_SASL_JAAS_CONFIG) != null ? 
+        String jaasConfig = getPassword(SOURCE_SASL_JAAS_CONFIG) != null ? 
                getPassword(SOURCE_SASL_JAAS_CONFIG).value() : null;
+        
+        if (jaasConfig == null) {
+            String username = getString(SOURCE_SASL_USERNAME_CONFIG);
+            String password = getPassword(SOURCE_SASL_PASSWORD_CONFIG) != null ?
+                    getPassword(SOURCE_SASL_PASSWORD_CONFIG).value() : null;
+            
+            if (username != null && password != null) {
+                String mechanism = getSourceSaslMechanism();
+                if ("PLAIN".equalsIgnoreCase(mechanism)) {
+                    jaasConfig = String.format(
+                        "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"%s\" password=\"%s\";",
+                        username, password);
+                    log.debug("Built JAAS config from username/password for PLAIN mechanism");
+                } else if ("SCRAM-SHA-256".equalsIgnoreCase(mechanism) || "SCRAM-SHA-512".equalsIgnoreCase(mechanism)) {
+                    jaasConfig = String.format(
+                        "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"%s\" password=\"%s\";",
+                        username, password);
+                    log.debug("Built JAAS config from username/password for {} mechanism", mechanism);
+                }
+            }
+        }
+        
+        return jaasConfig;
+    }
+    
+    public String getSourceSslTruststoreLocation() {
+        return getString(SOURCE_SSL_TRUSTSTORE_LOCATION_CONFIG);
+    }
+    
+    public String getSourceSslTruststorePassword() {
+        return getPassword(SOURCE_SSL_TRUSTSTORE_PASSWORD_CONFIG) != null ?
+                getPassword(SOURCE_SSL_TRUSTSTORE_PASSWORD_CONFIG).value() : null;
+    }
+    
+    public String getSourceSslKeystoreLocation() {
+        return getString(SOURCE_SSL_KEYSTORE_LOCATION_CONFIG);
+    }
+    
+    public String getSourceSslKeystorePassword() {
+        return getPassword(SOURCE_SSL_KEYSTORE_PASSWORD_CONFIG) != null ?
+                getPassword(SOURCE_SSL_KEYSTORE_PASSWORD_CONFIG).value() : null;
+    }
+    
+    public String getSourceSslKeyPassword() {
+        return getPassword(SOURCE_SSL_KEY_PASSWORD_CONFIG) != null ?
+                getPassword(SOURCE_SSL_KEY_PASSWORD_CONFIG).value() : null;
     }
 
     public boolean getPreservePartitions() {

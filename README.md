@@ -97,13 +97,22 @@ preserve.timestamps=true
 **Optional:**
 - `target.topic`: Target topic name (defaults to source topic name if not specified)
 - `source.group.id`: Consumer group ID for source cluster (default: `kafka-replicator-connector`)
-- `source.security.protocol`: Security protocol - PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL (default: `PLAINTEXT`)
-- `source.sasl.mechanism`: SASL mechanism for authentication (e.g., PLAIN, SCRAM-SHA-256)
-- `source.sasl.jaas.config`: JAAS configuration for SASL authentication
 - `poll.timeout.ms`: Timeout for polling source cluster (default: `1000`)
 - `max.poll.records`: Maximum records per poll (default: `500`)
 - `preserve.partitions`: Preserve source partition assignment (default: `true`)
 - `preserve.timestamps`: Preserve original message timestamps (default: `true`)
+
+**Security Configuration:**
+- `source.security.protocol`: Security protocol - PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL (default: `PLAINTEXT`)
+- `source.sasl.mechanism`: SASL mechanism - PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI
+- `source.sasl.jaas.config`: Direct JAAS configuration string (most flexible)
+- `source.sasl.username`: Username for SASL authentication (auto-builds JAAS config)
+- `source.sasl.password`: Password for SASL authentication (auto-builds JAAS config)
+- `source.ssl.truststore.location`: Path to SSL truststore file
+- `source.ssl.truststore.password`: Password for SSL truststore
+- `source.ssl.keystore.location`: Path to SSL keystore file
+- `source.ssl.keystore.password`: Password for SSL keystore
+- `source.ssl.key.password`: Password for the key in the keystore
 
 ## Deployment
 
@@ -158,14 +167,14 @@ curl -X POST http://localhost:8083/connectors \
   }'
 ```
 
-**With SASL Authentication:**
+**With SASL PLAIN Authentication (Direct JAAS):**
 ```bash
 curl -X POST http://localhost:8083/connectors \
   -H "Content-Type: application/json" \
   -d '{
     "name": "kafka-replicator-connector",
     "config": {
-      "connector.class": "com._8kta.kafka.connector.CustomSourceConnector",
+      "connector.class": "com.octavalo.kafka.connector.CustomSourceConnector",
       "tasks.max": "1",
       "source.bootstrap.servers": "source-kafka:9092",
       "source.topic": "my-source-topic",
@@ -173,6 +182,48 @@ curl -X POST http://localhost:8083/connectors \
       "source.security.protocol": "SASL_SSL",
       "source.sasl.mechanism": "PLAIN",
       "source.sasl.jaas.config": "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"user\" password=\"password\";"
+    }
+  }'
+```
+
+**With SASL Authentication (Simplified Username/Password):**
+```bash
+curl -X POST http://localhost:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "kafka-replicator-connector",
+    "config": {
+      "connector.class": "com.octavalo.kafka.connector.CustomSourceConnector",
+      "tasks.max": "1",
+      "source.bootstrap.servers": "source-kafka:9092",
+      "source.topic": "my-source-topic",
+      "target.topic": "my-target-topic",
+      "source.security.protocol": "SASL_SSL",
+      "source.sasl.mechanism": "PLAIN",
+      "source.sasl.username": "myuser",
+      "source.sasl.password": "mypassword"
+    }
+  }'
+```
+
+**With SCRAM-SHA-256 Authentication:**
+```bash
+curl -X POST http://localhost:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "kafka-replicator-connector",
+    "config": {
+      "connector.class": "com.octavalo.kafka.connector.CustomSourceConnector",
+      "tasks.max": "1",
+      "source.bootstrap.servers": "source-kafka:9092",
+      "source.topic": "my-source-topic",
+      "target.topic": "my-target-topic",
+      "source.security.protocol": "SASL_SSL",
+      "source.sasl.mechanism": "SCRAM-SHA-256",
+      "source.sasl.username": "myuser",
+      "source.sasl.password": "mypassword",
+      "source.ssl.truststore.location": "/path/to/truststore.jks",
+      "source.ssl.truststore.password": "truststore-pass"
     }
   }'
 ```
@@ -211,6 +262,68 @@ curl -X PUT http://localhost:8083/connectors/kafka-replicator-connector/resume
 3. **Message Polling**: Continuously polls messages from the source topic
 4. **Data Preservation**: Maintains message keys, values, headers, partitions (optional), and timestamps (optional)
 5. **Production**: Produces messages to the target cluster via Kafka Connect framework
+
+## Authentication Methods
+
+### SASL/PLAIN
+Simplest authentication method, suitable for development and testing.
+
+**Option 1: Direct JAAS Configuration**
+```properties
+source.security.protocol=SASL_PLAINTEXT
+source.sasl.mechanism=PLAIN
+source.sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="user" password="password";
+```
+
+**Option 2: Simplified (Auto-builds JAAS)**
+```properties
+source.security.protocol=SASL_PLAINTEXT
+source.sasl.mechanism=PLAIN
+source.sasl.username=user
+source.sasl.password=password
+```
+
+### SASL/SCRAM
+More secure than PLAIN, recommended for production.
+
+```properties
+source.security.protocol=SASL_SSL
+source.sasl.mechanism=SCRAM-SHA-256
+source.sasl.username=user
+source.sasl.password=password
+source.ssl.truststore.location=/path/to/truststore.jks
+source.ssl.truststore.password=truststore-password
+```
+
+### SSL/TLS (Mutual Authentication)
+Certificate-based authentication.
+
+```properties
+source.security.protocol=SSL
+source.ssl.truststore.location=/path/to/truststore.jks
+source.ssl.truststore.password=truststore-password
+source.ssl.keystore.location=/path/to/keystore.jks
+source.ssl.keystore.password=keystore-password
+source.ssl.key.password=key-password
+```
+
+### SASL/GSSAPI (Kerberos)
+For enterprise environments with Kerberos.
+
+```properties
+source.security.protocol=SASL_PLAINTEXT
+source.sasl.mechanism=GSSAPI
+source.sasl.jaas.config=com.sun.security.auth.module.Krb5LoginModule required useKeyTab=true storeKey=true keyTab="/path/to/kafka.keytab" principal="kafka/hostname@REALM";
+```
+
+## Security Best Practices
+
+1. **Use SSL/TLS in Production**: Always use `SASL_SSL` or `SSL` protocols for production environments
+2. **Secure Credentials**: Store passwords in external secret management systems (e.g., HashiCorp Vault, AWS Secrets Manager)
+3. **Use SCRAM over PLAIN**: SCRAM-SHA-256 or SCRAM-SHA-512 are more secure than PLAIN
+4. **Rotate Credentials**: Regularly rotate passwords and certificates
+5. **Limit Permissions**: Use Kafka ACLs to restrict connector permissions to only necessary topics
+6. **Monitor Authentication**: Enable audit logging for authentication attempts
 
 ## Use Cases
 

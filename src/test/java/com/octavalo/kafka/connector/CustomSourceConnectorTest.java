@@ -1,5 +1,6 @@
 package com.octavalo.kafka.connector;
 
+import org.apache.kafka.connect.errors.ConnectException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -74,5 +75,59 @@ class CustomSourceConnectorTest {
         assertTrue(connector.config().configKeys().containsKey("source.bootstrap.servers"));
         assertTrue(connector.config().configKeys().containsKey("source.topic"));
         assertTrue(connector.config().configKeys().containsKey("target.topic"));
+        assertTrue(connector.config().configKeys().containsKey("source.sasl.username"));
+        assertTrue(connector.config().configKeys().containsKey("source.ssl.truststore.location"));
+    }
+
+    @Test
+    void testStartWithNullProps() {
+        assertThrows(ConnectException.class, () -> connector.start(null));
+    }
+
+    @Test
+    void testStartWithEmptyProps() {
+        assertThrows(ConnectException.class, () -> connector.start(new HashMap<>()));
+    }
+
+    @Test
+    void testTaskConfigsWithInvalidMaxTasks() {
+        connector.start(props);
+        
+        List<Map<String, String>> taskConfigs = connector.taskConfigs(0);
+        
+        assertEquals(1, taskConfigs.size());
+    }
+
+    @Test
+    void testTaskConfigsWithNegativeMaxTasks() {
+        connector.start(props);
+        
+        List<Map<String, String>> taskConfigs = connector.taskConfigs(-1);
+        
+        assertEquals(1, taskConfigs.size());
+    }
+
+    @Test
+    void testStartWithAuthenticationConfig() {
+        Map<String, String> authProps = new HashMap<>(props);
+        authProps.put("source.security.protocol", "SASL_SSL");
+        authProps.put("source.sasl.mechanism", "PLAIN");
+        authProps.put("source.sasl.username", "testuser");
+        authProps.put("source.sasl.password", "testpass");
+        
+        assertDoesNotThrow(() -> {
+            connector.start(authProps);
+            connector.stop();
+        });
+    }
+
+    @Test
+    void testMultipleStartStopCycles() {
+        assertDoesNotThrow(() -> {
+            connector.start(props);
+            connector.stop();
+            connector.start(props);
+            connector.stop();
+        });
     }
 }

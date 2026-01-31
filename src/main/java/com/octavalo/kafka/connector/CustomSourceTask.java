@@ -78,7 +78,31 @@ public class CustomSourceTask extends SourceTask {
                 log.debug("SASL JAAS configuration provided");
             }
             
+            // SSL configuration
+            if (config.getSourceSslTruststoreLocation() != null) {
+                consumerProps.put("ssl.truststore.location", config.getSourceSslTruststoreLocation());
+                log.debug("SSL truststore location configured: {}", config.getSourceSslTruststoreLocation());
+            }
+            if (config.getSourceSslTruststorePassword() != null) {
+                consumerProps.put("ssl.truststore.password", config.getSourceSslTruststorePassword());
+                log.debug("SSL truststore password configured");
+            }
+            if (config.getSourceSslKeystoreLocation() != null) {
+                consumerProps.put("ssl.keystore.location", config.getSourceSslKeystoreLocation());
+                log.debug("SSL keystore location configured: {}", config.getSourceSslKeystoreLocation());
+            }
+            if (config.getSourceSslKeystorePassword() != null) {
+                consumerProps.put("ssl.keystore.password", config.getSourceSslKeystorePassword());
+                log.debug("SSL keystore password configured");
+            }
+            if (config.getSourceSslKeyPassword() != null) {
+                consumerProps.put("ssl.key.password", config.getSourceSslKeyPassword());
+                log.debug("SSL key password configured");
+            }
+            
             log.info("Creating Kafka consumer for source cluster: {}", config.getSourceBootstrapServers());
+            log.debug("Security protocol: {}, SASL mechanism: {}", 
+                    config.getSourceSecurityProtocol(), config.getSourceSaslMechanism());
             consumer = new KafkaConsumer<>(consumerProps);
         
             
