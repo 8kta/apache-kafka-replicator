@@ -1,0 +1,15 @@
+{
+  "name": "kafka-replicator",
+  "config": {
+    "connector.class": "com.octavalo.kafka.connector.CustomSourceConnector",
+    "tasks.max": "1",
+    "source.bootstrap.servers": "kafka-source:9092",
+    "source.topic": "test-source-topic",
+    "target.topic": "test-target-topic",
+    "source.group.id": "kafka-replicator-connector",
+    "poll.timeout.ms": "1000",
+    "max.poll.records": "500",
+    "preserve.partitions": "true",
+    "preserve.timestamps": "true"
+  }
+}

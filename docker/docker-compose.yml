@@ -1,0 +1,145 @@
+version: '3.8'
+
+services:
+  # Source Cluster - Zookeeper
+  zookeeper-source:
+    image: apache/kafka:3.6.0
+    container_name: zookeeper-source
+    hostname: zookeeper-source
+    ports:
+      - "2181:2181"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: controller
+      KAFKA_LISTENERS: CONTROLLER://0.0.0.0:9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@zookeeper-source:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    networks:
+      - kafka-network
+
+  # Source Cluster - Kafka Broker
+  kafka-source:
+    image: apache/kafka:3.6.0
+    container_name: kafka-source
+    hostname: kafka-source
+    ports:
+      - "9092:9092"
+      - "19092:19092"
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:19092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-source:9092,PLAINTEXT_HOST://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@zookeeper-source:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+    depends_on:
+      - zookeeper-source
+    networks:
+      - kafka-network
+    volumes:
+      - kafka-source-data:/tmp/kraft-combined-logs
+
+  # Target Cluster - Zookeeper
+  zookeeper-target:
+    image: apache/kafka:3.6.0
+    container_name: zookeeper-target
+    hostname: zookeeper-target
+    ports:
+      - "2182:2181"
+    environment:
+      KAFKA_NODE_ID: 3
+      KAFKA_PROCESS_ROLES: controller
+      KAFKA_LISTENERS: CONTROLLER://0.0.0.0:9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 3@zookeeper-target:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    networks:
+      - kafka-network
+
+  # Target Cluster - Kafka Broker
+  kafka-target:
+    image: apache/kafka:3.6.0
+    container_name: kafka-target
+    hostname: kafka-target
+    ports:
+      - "9093:9092"
+      - "19093:19093"
+    environment:
+      KAFKA_NODE_ID: 4
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:19093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-target:9092,PLAINTEXT_HOST://localhost:19093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 3@zookeeper-target:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+    depends_on:
+      - zookeeper-target
+    networks:
+      - kafka-network
+    volumes:
+      - kafka-target-data:/tmp/kraft-combined-logs
+
+  # Kafka Connect Worker
+  kafka-connect:
+    image: apache/kafka:3.6.0
+    container_name: kafka-connect
+    hostname: kafka-connect
+    ports:
+      - "8083:8083"
+    environment:
+      KAFKA_NODE_ID: 5
+      CONNECT_BOOTSTRAP_SERVERS: kafka-target:9092
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: kafka-replicator-connect-cluster
+      CONNECT_CONFIG_STORAGE_TOPIC: connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.converters.ByteArrayConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.converters.ByteArrayConverter
+      CONNECT_PLUGIN_PATH: /opt/kafka/plugins
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
+      CONNECT_LOG4J_LOGGERS: org.apache.kafka.connect=INFO,com.octavalo.kafka.connector=DEBUG
+      LOG_DIR: /var/log/kafka-connect
+    depends_on:
+      - kafka-source
+      - kafka-target
+    networks:
+      - kafka-network
+    volumes:
+      - ./plugins:/opt/kafka/plugins
+      - ./logs/connect:/var/log/kafka-connect
+      - ./config/log4j.properties:/opt/kafka/config/connect-log4j.properties
+    command: >
+      bash -c "
+      mkdir -p /opt/kafka/plugins/kafka-connector &&
+      mkdir -p /var/log/kafka-connect &&
+      export KAFKA_LOG4J_OPTS=\"-Dlog4j.configuration=file:/opt/kafka/config/connect-log4j.properties\" &&
+      /opt/kafka/bin/connect-distributed.sh /opt/kafka/config/connect-distributed.properties
+      "
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  kafka-network:
+    driver: bridge
+
+volumes:
+  kafka-source-data:
+  kafka-target-data:
