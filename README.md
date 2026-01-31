@@ -9,13 +9,19 @@ apache-kafka-replicator/
 ├── src/
 │   ├── main/
 │   │   ├── java/com/octavalo/kafka/connector/
-│   │   │   ├── CustomSourceConnector.java
-│   │   │   ├── CustomSourceTask.java
-│   │   │   └── CustomSourceConnectorConfig.java
+│   │   │   ├── CustomSourceConnector.java       # Main connector class
+│   │   │   ├── CustomSourceTask.java            # Task implementation with consumer logic
+│   │   │   └── CustomSourceConnectorConfig.java # Configuration with JAAS/SSL support
 │   │   └── resources/
 │   │       └── custom-source-connector.properties
 │   └── test/
-└── pom.xml
+│       └── java/com/octavalo/kafka/connector/
+│           ├── CustomSourceConnectorTest.java        # Connector unit tests
+│           ├── CustomSourceTaskTest.java             # Task unit tests
+│           └── CustomSourceConnectorConfigTest.java  # Configuration unit tests
+├── pom.xml                                      # Maven build configuration
+├── README.md                                    # This file
+└── .gitignore                                   # Git ignore rules
 ```
 
 ## Components
@@ -364,8 +370,15 @@ mvn test
 The connectors use SLF4J for logging. Configure logging levels in your Kafka Connect worker configuration:
 
 ```properties
-log4j.logger.com.example.kafka.connector=DEBUG
+log4j.logger.com.octavalo.kafka.connector=DEBUG
 ```
+
+Available log levels:
+- **ERROR**: Critical errors and exceptions
+- **WARN**: Warning messages (invalid configurations, processing errors)
+- **INFO**: General operational information (startup, shutdown, replication status)
+- **DEBUG**: Detailed debugging information (configuration details, offset management)
+- **TRACE**: Very detailed trace information (individual record processing)
 
 ## Troubleshooting
 
