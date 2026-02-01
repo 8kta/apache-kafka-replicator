@@ -40,6 +40,7 @@ apache-kafka-replicator/
 - **Offset management**: Automatic offset tracking and resumption
 - **Security support**: SASL/SSL authentication for source cluster
 - **Configurable performance**: Tunable batch sizes and poll intervals
+- **Consumer Group Offset Sync**: Synchronize consumer group offsets from source to target cluster
 
 ## Prerequisites
 
@@ -119,6 +120,12 @@ preserve.timestamps=true
 - `source.ssl.keystore.location`: Path to SSL keystore file
 - `source.ssl.keystore.password`: Password for SSL keystore
 - `source.ssl.key.password`: Password for the key in the keystore
+
+**Consumer Group Offset Sync:**
+- `sync.consumer.offsets`: Enable offset synchronization (default: `false`)
+- `sync.consumer.groups`: Comma-separated list of groups to sync (empty = all groups)
+- `offset.sync.interval.ms`: Sync interval in milliseconds (default: `60000`)
+- `offset.sync.topic`: Internal topic for sync state (default: `__consumer_offsets_sync`)
 
 ## Deployment
 
@@ -331,13 +338,33 @@ source.sasl.jaas.config=com.sun.security.auth.module.Krb5LoginModule required us
 5. **Limit Permissions**: Use Kafka ACLs to restrict connector permissions to only necessary topics
 6. **Monitor Authentication**: Enable audit logging for authentication attempts
 
+## Consumer Group Offset Synchronization
+
+The replicator can synchronize consumer group offsets from the source cluster to the target cluster, enabling seamless failover and migration scenarios.
+
+**Enable offset sync:**
+```json
+{
+  "sync.consumer.offsets": "true",
+  "sync.consumer.groups": "group1,group2",
+  "offset.sync.interval.ms": "60000"
+}
+```
+
+**Benefits:**
+- Consumer groups maintain their position during failover
+- No message reprocessing or data loss
+- Smooth cluster migration for active consumers
+
+For detailed documentation, see [OFFSET_SYNC.md](OFFSET_SYNC.md)
+
 ## Use Cases
 
-- **Disaster Recovery**: Replicate critical topics to a backup cluster
-- **Data Migration**: Move data from one Kafka cluster to another
+- **Disaster Recovery**: Replicate critical topics to a backup cluster with consumer position sync
+- **Data Migration**: Move data from one Kafka cluster to another while maintaining consumer state
 - **Multi-Region Replication**: Sync data across geographically distributed clusters
 - **Development/Testing**: Copy production data to non-production environments
-- **Cloud Migration**: Migrate from on-premise to cloud Kafka clusters
+- **Cloud Migration**: Migrate from on-premise to cloud Kafka clusters with zero downtime
 
 ## Customization
 

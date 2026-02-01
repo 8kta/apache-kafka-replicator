@@ -1,5 +1,6 @@
 package com.octavalo.kafka.connector;
 
+import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -35,6 +36,8 @@ public class CustomSourceTask extends SourceTask {
     private String taskId;
     private boolean preservePartitions;
     private boolean preserveTimestamps;
+    private ConsumerGroupOffsetSync offsetSync;
+    private boolean syncConsumerOffsets;
 
     @Override
     public String version() {
@@ -57,6 +60,10 @@ public class CustomSourceTask extends SourceTask {
             targetTopic = config.getTargetTopic();
             preservePartitions = config.getPreservePartitions();
             preserveTimestamps = config.getPreserveTimestamps();
+            syncConsumerOffsets = config.getSyncConsumerOffsets();
+            
+            log.info("Configuration: preserve partitions={}, preserve timestamps={}, sync offsets={}",
+                    preservePartitions, preserveTimestamps, syncConsumerOffsets);
             
             log.debug("Configuring Kafka consumer for source cluster");
             Properties consumerProps = new Properties();
@@ -142,9 +149,15 @@ public class CustomSourceTask extends SourceTask {
                 consumer.subscribe(Collections.singletonList(sourceTopic));
             }
             
+            // Initialize offset sync if enabled
+            if (syncConsumerOffsets) {
+                initializeOffsetSync();
+            }
+            
             log.info("CustomSourceTask started successfully");
             log.info("Replicating from source topic '{}' to target topic '{}'", sourceTopic, targetTopic);
-            log.info("Preserve partitions: {}, Preserve timestamps: {}", preservePartitions, preserveTimestamps);
+            log.info("Preserve partitions: {}, Preserve timestamps: {}, Sync offsets: {}", 
+                    preservePartitions, preserveTimestamps, syncConsumerOffsets);
             
         } catch (KafkaException e) {
             log.error("Kafka error while starting task: {}", e.getMessage(), e);
@@ -154,6 +167,47 @@ public class CustomSourceTask extends SourceTask {
             log.error("Unexpected error while starting task: {}", e.getMessage(), e);
             closeConsumer();
             throw new ConnectException("Failed to start task", e);
+        }
+    }
+
+    private void initializeOffsetSync() {
+        try {
+            log.info("Initializing consumer group offset synchronization");
+            
+            // Create admin clients for source and target clusters
+            Properties sourceAdminProps = new Properties();
+            sourceAdminProps.put("bootstrap.servers", config.getSourceBootstrapServers());
+            sourceAdminProps.put("security.protocol", config.getSourceSecurityProtocol());
+            
+            if (config.getSourceSaslMechanism() != null) {
+                sourceAdminProps.put("sasl.mechanism", config.getSourceSaslMechanism());
+            }
+            if (config.getSourceSaslJaasConfig() != null) {
+                sourceAdminProps.put("sasl.jaas.config", config.getSourceSaslJaasConfig());
+            }
+            
+            AdminClient sourceAdmin = AdminClient.create(sourceAdminProps);
+            
+            // For target cluster, use Kafka Connect cluster configuration
+            Properties targetAdminProps = new Properties();
+            targetAdminProps.put("bootstrap.servers", context.configs().get("bootstrap.servers"));
+            AdminClient targetAdmin = AdminClient.create(targetAdminProps);
+            
+            offsetSync = new ConsumerGroupOffsetSync(
+                    sourceAdmin,
+                    targetAdmin,
+                    sourceTopic,
+                    targetTopic,
+                    config.getSyncConsumerGroups(),
+                    config.getOffsetSyncIntervalMs()
+            );
+            
+            log.info("Offset synchronization initialized with interval: {}ms", 
+                    config.getOffsetSyncIntervalMs());
+            
+        } catch (Exception e) {
+            log.error("Failed to initialize offset synchronization: {}", e.getMessage(), e);
+            throw new ConnectException("Failed to initialize offset sync", e);
         }
     }
 
@@ -227,6 +281,17 @@ public class CustomSourceTask extends SourceTask {
                 log.debug("Successfully processed {} records", processedCount);
             }
             
+            // Sync consumer group offsets if enabled and interval has passed
+            if (syncConsumerOffsets && offsetSync != null && offsetSync.shouldSync()) {
+                try {
+                    log.debug("Triggering consumer group offset synchronization");
+                    offsetSync.syncOffsets();
+                } catch (Exception e) {
+                    log.warn("Error during offset synchronization: {}", e.getMessage());
+                    // Don't fail the poll, just log the error
+                }
+            }
+            
             return sourceRecords.isEmpty() ? null : sourceRecords;
             
         } catch (WakeupException e) {
@@ -244,8 +309,22 @@ public class CustomSourceTask extends SourceTask {
     @Override
     public void stop() {
         log.info("Stopping CustomSourceTask");
-        closeConsumer();
-        log.info("CustomSourceTask stopped successfully");
+        try {
+            // Close offset sync if initialized
+            if (offsetSync != null) {
+                log.info("Closing offset synchronization");
+                try {
+                    offsetSync.close();
+                } catch (Exception e) {
+                    log.warn("Error closing offset sync: {}", e.getMessage());
+                }
+            }
+            
+            closeConsumer();
+            log.info("CustomSourceTask stopped successfully");
+        } catch (Exception e) {
+            log.error("Error stopping CustomSourceTask: {}", e.getMessage(), e);
+        }
     }
     
     private void closeConsumer() {

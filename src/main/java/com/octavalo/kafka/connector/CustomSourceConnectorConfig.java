@@ -74,6 +74,21 @@ public class CustomSourceConnectorConfig extends AbstractConfig {
     private static final String PRESERVE_TIMESTAMPS_DOC = "Preserve original message timestamps";
     private static final boolean PRESERVE_TIMESTAMPS_DEFAULT = true;
 
+    public static final String SYNC_CONSUMER_OFFSETS_CONFIG = "sync.consumer.offsets";
+    private static final String SYNC_CONSUMER_OFFSETS_DOC = "Enable synchronization of consumer group offsets from source to target cluster";
+    private static final boolean SYNC_CONSUMER_OFFSETS_DEFAULT = false;
+
+    public static final String SYNC_CONSUMER_GROUPS_CONFIG = "sync.consumer.groups";
+    private static final String SYNC_CONSUMER_GROUPS_DOC = "Comma-separated list of consumer groups to sync offsets for (empty means all groups)";
+
+    public static final String OFFSET_SYNC_INTERVAL_MS_CONFIG = "offset.sync.interval.ms";
+    private static final String OFFSET_SYNC_INTERVAL_MS_DOC = "Interval in milliseconds for syncing consumer group offsets";
+    private static final int OFFSET_SYNC_INTERVAL_MS_DEFAULT = 60000;
+
+    public static final String OFFSET_SYNC_TOPIC_CONFIG = "offset.sync.topic";
+    private static final String OFFSET_SYNC_TOPIC_DOC = "Internal topic for tracking offset sync state (defaults to __consumer_offsets_sync)";
+    private static final String OFFSET_SYNC_TOPIC_DEFAULT = "__consumer_offsets_sync";
+
     public CustomSourceConnectorConfig(Map<?, ?> originals) {
         super(config(), originals);
         try {
@@ -201,7 +216,27 @@ public class CustomSourceConnectorConfig extends AbstractConfig {
                         Type.BOOLEAN,
                         PRESERVE_TIMESTAMPS_DEFAULT,
                         Importance.LOW,
-                        PRESERVE_TIMESTAMPS_DOC);
+                        PRESERVE_TIMESTAMPS_DOC)
+                .define(SYNC_CONSUMER_OFFSETS_CONFIG,
+                        Type.BOOLEAN,
+                        SYNC_CONSUMER_OFFSETS_DEFAULT,
+                        Importance.MEDIUM,
+                        SYNC_CONSUMER_OFFSETS_DOC)
+                .define(SYNC_CONSUMER_GROUPS_CONFIG,
+                        Type.STRING,
+                        null,
+                        Importance.MEDIUM,
+                        SYNC_CONSUMER_GROUPS_DOC)
+                .define(OFFSET_SYNC_INTERVAL_MS_CONFIG,
+                        Type.INT,
+                        OFFSET_SYNC_INTERVAL_MS_DEFAULT,
+                        Importance.LOW,
+                        OFFSET_SYNC_INTERVAL_MS_DOC)
+                .define(OFFSET_SYNC_TOPIC_CONFIG,
+                        Type.STRING,
+                        OFFSET_SYNC_TOPIC_DEFAULT,
+                        Importance.LOW,
+                        OFFSET_SYNC_TOPIC_DOC);
     }
 
     public String getSourceBootstrapServers() {
@@ -311,5 +346,21 @@ public class CustomSourceConnectorConfig extends AbstractConfig {
 
     public boolean getPreserveTimestamps() {
         return getBoolean(PRESERVE_TIMESTAMPS_CONFIG);
+    }
+
+    public boolean getSyncConsumerOffsets() {
+        return getBoolean(SYNC_CONSUMER_OFFSETS_CONFIG);
+    }
+
+    public String getSyncConsumerGroups() {
+        return getString(SYNC_CONSUMER_GROUPS_CONFIG);
+    }
+
+    public int getOffsetSyncIntervalMs() {
+        return getInt(OFFSET_SYNC_INTERVAL_MS_CONFIG);
+    }
+
+    public String getOffsetSyncTopic() {
+        return getString(OFFSET_SYNC_TOPIC_CONFIG);
     }
 }
